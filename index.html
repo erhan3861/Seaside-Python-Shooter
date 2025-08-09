@@ -1,0 +1,1228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Seaside Shooter</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@500;700&display=swap">
+
+<style>
+  body { margin:0; overflow:hidden; background:#202020; font-family:system-ui,arial,sans-serif; }
+  #hud { position:fixed; inset:0 auto auto 0; padding:10px; color:#fff; z-index:5; text-shadow:0 1px 2px #000; }
+  #hud .score { font-size:22px; position:fixed; bottom:5px; left:30%; color:#a70ce9cd}
+  #hud .hint { font-size:14px; opacity:.9 }
+
+  .qp-item{background:#0b1220;border-radius:10px;padding:8px 10px}
+  .qp-title{font-size:13px;font-weight:700}
+  .qp-bar{height:6px;background:#0f172a;border-radius:999px;overflow:hidden;margin-top:6px}
+  .qp-fill{height:100%;background:linear-gradient(90deg,#22c55e,#84cc16);width:0%}
+
+    :root{
+      --panel-bg: rgba(10,16,28,.82);
+      --panel-blur: blur(6px);
+      --panel-border: rgba(255,255,255,.06);
+      --text: #eaf0ff;
+      --muted: #9fb2ce;
+      --ok: #22c55e;
+      --barbg: #0b1220;
+      --shadow: 0 10px 30px rgba(0,0,0,.35);
+    }
+
+    body { font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+
+    /* === Görev Paneli — Sol Alt === */
+    #questPanel{
+      position: fixed; left: 20px; bottom: 10px; z-index: 20;
+      width: 320px;
+    }
+    #questPanel .qp-wrap{
+      background: var(--panel-bg);
+      -webkit-backdrop-filter: var(--panel-blur); backdrop-filter: var(--panel-blur);
+      border: 1px solid var(--panel-border);
+      color: var(--text);
+      border-radius: 14px; padding: 12px 14px; box-shadow: var(--shadow);
+    }
+    #questPanel .qp-header{
+      display:flex; align-items:center; gap:8px; margin-bottom:8px;
+    }
+    #questPanel .qp-title{
+      font-weight: 800; letter-spacing:.2px;
+    }
+    #questPanel .qp-badge{
+      margin-left:auto; font-size:12px; color: var(--muted);
+    }
+    #qp-list{ display:grid; gap:10px; max-height: 30vh; overflow:auto; padding-right:6px; }
+    #qp-list::-webkit-scrollbar{ width: 6px; }
+    #qp-list::-webkit-scrollbar-thumb{ background: rgba(255,255,255,.14); border-radius: 10px; }
+
+    .qp-item{ background: #0b1220; border-radius: 10px; padding: 9px 10px; }
+    .qp-title{ font-size: 13px; font-weight: 700; display:flex; align-items:center; gap:6px; }
+    .qp-meta{ margin-left:auto; font-size:12px; color: var(--muted); }
+    .qp-bar{ height:6px; background:#0f172a; border-radius:999px; overflow:hidden; margin-top:6px; }
+    .qp-fill{ height:100%; background: linear-gradient(90deg, var(--ok), #84cc16); width:0%; }
+
+    /* === Joker Paneli — Sağ Alt === */
+    #jokerUI{
+      position: fixed; right: 20px; bottom: 20px; z-index: 20;
+      width: 220px;
+    }
+    #jokerUI .jk-wrap{
+      background: var(--panel-bg);
+      -webkit-backdrop-filter: var(--panel-blur); backdrop-filter: var(--panel-blur);
+      border: 1px solid var(--panel-border);
+      color: var(--text);
+      border-radius: 12px; padding: 10px 12px; box-shadow: var(--shadow);
+    }
+    #jokerUI .jk-head{ display:flex; align-items:center; gap:8px; }
+    #jokerUI .jk-title{ font-weight:800; }
+    #jokerCount{
+      margin-left:auto; background: var(--ok); color:#052810;
+      padding: 2px 8px; border-radius: 999px; font-weight: 800; min-width: 28px; text-align:center;
+    }
+    #jokerUI .jk-actions{ display:flex; gap:8px; margin-top:8px; }
+    #jokerUI button{
+      flex:1; background:#1e293b; color:var(--text);
+      border:none; border-radius:8px; padding:8px 10px; cursor:pointer; font-weight:700;
+    }
+    #jokerUI button:hover{ filter: brightness(1.06); }
+    #multTimer{ margin-top:6px; font-size:12px; color: var(--muted); display:none; }
+
+    /* === Küçük ekran düzeni === */
+    @media (max-width: 900px){
+      #questPanel{ width: 86vw; left: 50%; transform: translateX(-50%); bottom: 12px; }
+      #jokerUI{ right: 12px; bottom: calc(12px + 54vh); width: auto; }
+    }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.152.2/examples/jsm/",
+    "cannon-es": "https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js"
+  }
+}
+</script>
+</head>
+<body>
+<div id="hud">
+  <div class="score">Score: <span id="score">0</span></div>
+  <!-- <div class="hint">Herhangi bir gemiye tıkla! İlk atışta otomatik nişan alır. Aynı gemiye tekrar tıklarsan pitch %10 artar (yukarı ateşler).</div> -->
+</div>
+
+<!-- ==== Popup: Kelime Kartı ==== -->
+<div id="wordPopup" style="position:fixed;right:20px;top:20px;z-index:20;display:none;">
+  <div style="width:320px;background:#0f172aEE;color:#e2e8f0;border-radius:14px;padding:14px 16px;box-shadow:0 10px 30px #0007;backdrop-filter: blur(4px);">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+      <div id="wp-badge" style="font-size:12px;padding:2px 8px;border-radius:999px;background:#16a34a;color:#071b0a;">PY</div>
+      <div id="wp-title" style="font-size:18px;font-weight:700">def</div>
+    </div>
+    <div id="wp-meaning" style="font-size:14px;opacity:.95"></div>
+    <pre id="wp-example" style="margin-top:10px;background:#0b1220;border-radius:8px;padding:10px;overflow:auto;font-size:12px;color:#cbd5e1;"></pre>
+    <button id="wp-close" style="margin-top:10px;width:100%;background:#1e293b;color:#e2e8f0;border:none;border-radius:10px;padding:8px;font-weight:600;cursor:pointer;">Kapat</button>
+  </div>
+</div>
+
+<!-- ==== Görev Paneli ==== -->
+<!-- Görev Paneli (Sol Alt) -->
+<div id="questPanel">
+  <div class="qp-wrap">
+    <div class="qp-header">
+      <span class="qp-title">Görevler</span>
+      <span id="qp-mini" class="qp-badge">günlük</span>
+    </div>
+    <div id="qp-list"></div>
+  </div>
+</div>
+
+<!-- ==== Mermi Sayısı Slider ==== -->
+ 
+<div style="position:fixed; bottom:3px; left:50%; transform:translateX(-50%); z-index:12; color:#fff; background:rgba(0,0,0,.42); border-radius:12px; padding:8px 8px; box-shadow:0 2px 10px #0003; font-size:15px;">
+  <span>Mermi Sayısı:</span>
+  <input type="range" id="bulletSlider" min="1" max="20" value="1" style="vertical-align:middle;">
+  <span id="bulletCount">1</span>
+</div>
+
+ 
+<!-- ==== Joker ==== -->
+<div id="jokerUI" style="position:fixed; right:20px; bottom:20px; z-index:20; background:#0f172aCC; color:#e2e8f0; border-radius:12px; padding:10px 12px; box-shadow:0 10px 30px #0006;">
+  <div style="display:flex; align-items:center; gap:8px;">
+    <span style="font-weight:800;">Joker</span>
+    <span id="jokerCount" style="margin-left:auto; background:#22c55e; color:#052810; padding:2px 8px; border-radius:999px; font-weight:700;">0</span>
+  </div>
+  <div style="display:flex; gap:6px; margin-top:8px;">
+    <button id="useShield" style="flex:1; background:#1e293b; color:#e2e8f0; border:none; border-radius:8px; padding:6px; cursor:pointer;">Kalkan</button>
+    <button id="useX2" style="flex:1; background:#1e293b; color:#e2e8f0; border:none; border-radius:8px; padding:6px; cursor:pointer;">x2</button>
+  </div>
+  <div id="multTimer" style="margin-top:6px; font-size:12px; opacity:.85; display:none;">x2: <span id="multLeft">10.0</span>s</div>
+  <div id="shieldTimer" style="margin-top:6px; font-size:12px; opacity:.85; display:none;">
+  Kalkan: <span id="shieldLeft">10.0</span>s
+</div>
+</div>
+<!-- ==== Joker ==== -->
+<!-- Sağ üst: ses aç/kapat -->
+<button id="soundToggle" title="Okyanus sesi" aria-label="Okyanus sesi"
+        style="position:fixed;right:14px;top:12px;z-index:30;
+               background:rgba(15,23,42,.75);color:#fff;border:none;
+               border-radius:8px;padding:5px 5px;cursor:pointer;
+               font-size:18px;line-height:1;backdrop-filter:blur(6px);user-select: none;">
+  🔊
+</button>
+<!-- ==== ses açama kapama ==== -->
+
+<!-- Ses Efektleri -->
+<!-- <audio id="sfx_bg" src="ocean.wav"></audio>
+<audio id="sfx_seagull" src="seagull.mp3"></audio> -->
+
+<audio id="sfx_bg" src="https://raw.githubusercontent.com/erhan3861/Seaside-Python-Shooter/main/ocean.wav"></audio>
+<audio id="sfx_seagull" src="https://raw.githubusercontent.com/erhan3861/Seaside-Python-Shooter/main/seagull.mp3"></audio>
+<audio id="sfx_hit_py" src="https://raw.githubusercontent.com/erhan3861/arrow-concept-game/main/correct.wav"></audio>
+<audio id="sfx_wrong" src="https://raw.githubusercontent.com/erhan3861/arrow-concept-game/main/wrong.mp3"></audio>
+
+<script type="module">
+import * as THREE from 'three';
+import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import * as CANNON from 'cannon-es';
+
+// === SFX: id haritası + çalma helper ===
+const SFX = {
+  bg: 'sfx_bg',            // arka plan
+  hit_py: 'sfx_hit_py',    // doğru gemi
+  hit_wrong: 'sfx_wrong',  // yanlış gemi
+  joker: 'sfx_joker',      // joker kazan/kullan
+  seagull: 'sfx_seagull'   // martı
+};
+function playSfx(key){
+  const id = SFX[key];
+  if(!id) return;
+  const el = document.getElementById(id);
+  if(el){ el.currentTime = 0; el.play().catch(()=>{}); }
+}
+
+// global değişkenler
+let shieldT = 0;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x87ceeb);
+
+const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.1, 2000);
+camera.position.set(0, 10, 28);
+camera.lookAt(0, 2, 0);
+
+const renderer = new THREE.WebGLRenderer({ antialias:true });
+renderer.setSize(innerWidth, innerHeight);
+document.body.appendChild(renderer.domElement);
+
+const labelRenderer = new CSS2DRenderer();
+labelRenderer.setSize(innerWidth, innerHeight);
+labelRenderer.domElement.style.position = 'fixed';
+labelRenderer.domElement.style.inset = '0';
+document.body.appendChild(labelRenderer.domElement);
+
+scene.add(new THREE.AmbientLight(0xffffff, .7));
+const dirLight = new THREE.DirectionalLight(0xffffff, .9); dirLight.position.set(20,40,15); scene.add(dirLight);
+
+const world = new CANNON.World({ gravity: new CANNON.Vec3(0, -9.82, 0) });
+world.broadphase = new CANNON.NaiveBroadphase();
+
+// Sahil ve topun merkezi (beach zaten var)
+const NO_GO_CENTER = new THREE.Vector3(0, 0, 18.5); // beach(0,1.8,20) ve base(0,2,17) arası
+const NO_GO_RADIUS = 13.0;       // yasak çember yarıçapı (oynayabilirsin)
+const AVOID_PUSH   = 0.6;        // içeri girerse itme şiddeti
+const AVOID_TANGENT= 0.5;        // etrafından dolanma (tangensel) bileşen
+const DRIFT_MAX    = 2.0;        // gemi sürüklenme hızı üst sınırı
+
+
+const SEA_SIZE = 260, SEA_SEGMENTS = 48;
+const seaGeo = new THREE.PlaneGeometry(SEA_SIZE, SEA_SIZE, SEA_SEGMENTS, SEA_SEGMENTS);
+
+// --- gradient renkler (uv.y'ye göre) ---
+const topColor = new THREE.Color(0x0d4d73);     // derin koyu mavi
+const bottomColor = new THREE.Color(0x1fa3d6);  // sığ turkuaz
+const uv = seaGeo.attributes.uv;
+const colors = new Float32Array(uv.count * 3);
+for (let i = 0; i < uv.count; i++) {
+  const t = uv.getY(i); // 0..1
+  const c = bottomColor.clone().lerp(topColor, t);
+  colors[i*3+0] = c.r;
+  colors[i*3+1] = c.g;
+  colors[i*3+2] = c.b;
+}
+seaGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+const seaMat = new THREE.MeshPhongMaterial({ vertexColors:true, shininess:55, transparent:true, opacity:0.80 });
+const sea = new THREE.Mesh(seaGeo, seaMat);
+sea.rotation.x = -Math.PI/2; sea.position.y = 0.5;
+scene.add(sea);
+
+//sea sonu
+const beach = new THREE.Mesh(new THREE.CircleGeometry(8, 48), new THREE.MeshPhongMaterial({ color:0xC2B280 }));
+beach.rotation.x = -Math.PI/2; beach.position.set(0, 1.8, 20); scene.add(beach);
+
+const baseMesh = new THREE.Mesh(new THREE.CylinderGeometry(2,2,1,32), new THREE.MeshPhongMaterial({color:0x555555}));
+baseMesh.position.set(0, 2.0, 17); scene.add(baseMesh);
+
+const barrelPivot = new THREE.Object3D();
+barrelPivot.position.y = 0.5;
+baseMesh.add(barrelPivot);
+
+const barrelMesh = new THREE.Mesh(
+  new THREE.CylinderGeometry(0.3, 0.3, 6, 32),
+  new THREE.MeshPhongMaterial({color:0x333333})
+);
+barrelMesh.rotation.z = Math.PI/2; 
+barrelMesh.position.x = 3;
+barrelPivot.add(barrelMesh);
+
+let yaw = 0, pitch = 0;
+const bullets = [];
+const ships = [];
+let shipGLB = null;
+const PY_WORDS = ['def','lambda','list','dict','tuple','set','range','len','append','pop','slice','yield','async','await','with','try','except','import','from','as','class','self','__init__','venv','pip'];
+const OTHER_WORDS = ['pointer','malloc','template','namespace','header','JVM','bytecode','GC','ptr','interface','struct','React','Vue','Kotlin','Swift','TypeScript','SegFault','printf','#include','main.cpp'];
+
+new GLTFLoader().load('https://raw.githubusercontent.com/erhan3861/Seaside-Python-Shooter/main/ship.glb', (gltf)=>{
+  shipGLB = gltf.scene;
+  shipGLB.traverse(o=>{ if(o.isMesh){ o.castShadow = o.receiveShadow = true; } });
+  shipGLB.scale.set(0.7,0.7,0.7);
+  // Yedek gemi kutusu için:
+  if (!shipGLB) {
+    mesh.material = new THREE.MeshStandardMaterial({ color:0x8b4513, roughness:0.9, metalness:0.2 });
+  }
+  for(let i=0;i<6;i++) spawnShip();
+  setInterval(()=>spawnShip(), 3000);
+});
+function spawnShip(){
+  const pick = nextWord();
+  const usePython = pick.isPython;
+  const word = pick.word;
+
+  const mesh = (shipGLB ? shipGLB.clone(true)
+    : new THREE.Mesh(new THREE.BoxGeometry(4,1.2,2), new THREE.MeshPhongMaterial({color:0x8b4513})));
+
+  // Konum seç – NO_GO circle dışında doğana kadar dene
+  let px, pz;
+  do {
+    px = randRange(-SEA_SIZE*0.35, SEA_SIZE*0.35);
+    pz = randRange(-SEA_SIZE*0.35, SEA_SIZE*0.35);
+  } while (new THREE.Vector3(px,0,pz).distanceTo(NO_GO_CENTER) < NO_GO_RADIUS + 2.0);
+
+  mesh.position.set(px, 1.2, pz);
+  mesh.rotation.y = Math.random()*Math.PI*2;
+  scene.add(mesh);
+
+  const div = document.createElement('div');
+  div.style.color = usePython ? '#2efc89' : '#fff';
+  div.style.fontSize = '18px'; div.style.textShadow = '0 1px 2px #000';
+  div.style.cursor = 'pointer';
+  div.textContent = word;
+  const label = new CSS2DObject(div); label.position.set(0, 2.2, 0); mesh.add(label);
+
+  const drift = new THREE.Vector3(randRange(-1.5,1.5), 0, randRange(-1.5,1.5));
+  const phase = Math.random()*Math.PI*2;
+  ships.push({ mesh, label, div, word, isPython: usePython, phase, drift });
+
+  
+}
+
+
+function prevent_from_cannon(m,s){
+  // --- Sahil/top çevresinden uzak tut ---animate()
+  const toCenter = new THREE.Vector3().subVectors(m.position, NO_GO_CENTER);
+  const dist = toCenter.length();
+  if (dist < NO_GO_RADIUS) {
+    // İçerideyse dışarı it
+    toCenter.normalize();
+    // Pozisyonu çember sınırına koy
+    m.position.copy(NO_GO_CENTER).add(toCenter.multiplyScalar(NO_GO_RADIUS));
+
+    // Drift'e itme + tangensel kaçış ekle (etrafından dolansın)
+    const normal = toCenter.clone();            // merkezden dışarı
+    const tangent = new THREE.Vector3(-normal.z, 0, normal.x).normalize(); // saat yönü
+    s.drift.add(normal.multiplyScalar(AVOID_PUSH));
+    s.drift.add(tangent.multiplyScalar(AVOID_TANGENT));
+  }
+
+  // Drift hızını sınırla (taşma/ışınlanma olmasın)
+  const speed = s.drift.length();
+  if (speed > DRIFT_MAX) s.drift.multiplyScalar(DRIFT_MAX / speed);
+
+}
+
+function fire(){
+  const bulletGeo = new THREE.SphereGeometry(0.32, 18, 18);
+  const bulletMat = new THREE.MeshPhongMaterial({color:0xff2222});
+  const bulletMesh = new THREE.Mesh(bulletGeo, bulletMat);
+
+  const barrelWorldPos = new THREE.Vector3();
+  barrelMesh.getWorldPosition(barrelWorldPos);
+
+  const dir = new THREE.Vector3(0,-1,0);
+  dir.applyQuaternion(barrelMesh.getWorldQuaternion(new THREE.Quaternion()));
+  dir.normalize();
+
+  const muzzleLength = 3;
+  const muzzleWorldPos = barrelWorldPos.clone().add(dir.clone().multiplyScalar(muzzleLength));
+  bulletMesh.position.copy(muzzleWorldPos);
+  scene.add(bulletMesh);
+
+  const shape = new CANNON.Sphere(0.2);
+  const body = new CANNON.Body({mass:1, shape});
+  body.position.copy(muzzleWorldPos);
+  body.velocity.set(dir.x*30, dir.y*30, dir.z*30);
+
+  world.addBody(body);
+  bullets.push({mesh:bulletMesh, body});
+}
+
+let score = 0; const scoreEl = document.getElementById('score');
+function addScore(delta){ delta = Math.round(delta * scoreMultiplier); score = Math.max(0, score + delta); scoreEl.textContent = score; }
+
+// particles
+// === YENİ, DAHA VURUCU PATLAMA: fiziksel hareket + çok parçacık ===
+// boom()'a DOKUNMA. Bunu ekle ve gemi yok olurken boom(...)'un YANINA çağır.
+function shatterBurstImpact(pos){
+  // Ortak yardımcılar
+  const rand = (a,b)=> a + Math.random()*(b-a);
+  const addParticle = (mesh, vel, ttl, opts={})=>{
+    mesh.position.copy(pos);
+    scene.add(mesh);
+    bullets.push({
+      mesh: mesh,
+      v: vel.clone(),              // manuel hız (CANNON kullanmıyoruz)
+      av: opts.av || new THREE.Vector3(), // açısal hız
+      ttl,
+      fade: opts.fade ?? true,
+      shrink: opts.shrink ?? false
+    });
+  };
+
+  // 1) Ahşap kıymıklar (kahverengi tonlar, kutu parçaları)
+  for(let i=0;i<48;i++){
+    const wood = new THREE.Mesh(
+      new THREE.BoxGeometry(rand(0.08,0.18), rand(0.04,0.12), rand(0.12,0.28)),
+      new THREE.MeshPhongMaterial({
+        color: new THREE.Color().setHSL(0.08 + Math.random()*0.06, 0.6, 0.28 + Math.random()*0.15),
+        shininess: 10, transparent:true, opacity:0.95
+      })
+    );
+    // Her yöne ama biraz yukarı ağırlıklı hız
+    const dir = new THREE.Vector3(Math.random()*2-1, Math.random()*0.6+0.4, Math.random()*2-1).normalize();
+    const vel = dir.multiplyScalar(rand(10,18));
+    const av  = new THREE.Vector3(rand(-6,6), rand(-8,8), rand(-4,4)); // açısal hız
+    addParticle(wood, vel, rand(1.0,1.6), { av, shrink:false });
+  }
+
+  // 2) Kızıl kor parçalar (küçük küreler, hızlı ve çabuk sönen)
+  const emberGeo = new THREE.SphereGeometry(0.08, 8, 8);
+  for(let i=0;i<140;i++){
+    const ember = new THREE.Mesh(
+      emberGeo,
+      new THREE.MeshPhongMaterial({
+        color: new THREE.Color().setHSL(0.02 + Math.random()*0.04, 0.85, 0.5 + Math.random()*0.2),
+        emissive: 0x442211, transparent:true, opacity:0.9
+      })
+    );
+    // Fibonacci küre dağılımına yakın: eş yön saçılım + hız
+    const u = Math.random(), v = Math.random();
+    const theta = 2*Math.PI*u, phi = Math.acos(2*v-1);
+    const dir = new THREE.Vector3(
+      Math.sin(phi)*Math.cos(theta),
+      Math.abs(Math.cos(phi))*0.8 + 0.1, // daha çok yukarı
+      Math.sin(phi)*Math.sin(theta)
+    ).normalize();
+    const vel = dir.multiplyScalar(rand(12,20));
+    addParticle(ember, vel, rand(0.7,1.0), { shrink:true });
+  }
+
+  // 3) Yatay şok halkası (ufak küreler, deniz yüzeyine paralel saçılır)
+  const ringGeo = new THREE.SphereGeometry(0.1, 8, 8);
+  const ringCount = 36;
+  for(let i=0;i<ringCount;i++){
+    const a = (i/ringCount) * Math.PI*2;
+    const v2 = new THREE.Vector3(Math.cos(a), rand(0.05,0.25), Math.sin(a)).multiplyScalar(rand(8,14));
+    const puff = new THREE.Mesh(
+      ringGeo,
+      new THREE.MeshPhongMaterial({ color:0xAA3A20, transparent:true, opacity:0.85 })
+    );
+    addParticle(puff, v2, rand(0.9,1.2), { shrink:true });
+  }
+}
+
+
+
+
+function boom(pos, color=0xffaa33){
+  document.getElementById('boomSound')?.play();
+  for(let i=0; i<120; i++){
+    const size = 0.13 + Math.random()*0.12;
+    const hue = Math.random();
+    let clr;
+    if(i<60) clr = new THREE.Color().setHSL(0.06 + Math.random()*0.08, 0.95, 0.5+Math.random()*0.2);
+    else if(i<90) clr = new THREE.Color().setHSL(0.57 + Math.random()*0.1, 0.6, 0.55+Math.random()*0.2);
+    else clr = new THREE.Color().setHSL(hue, 0.8, 0.7);
+    const particle = new THREE.Mesh(
+      new THREE.SphereGeometry(size, 7, 7),
+      new THREE.MeshPhongMaterial({
+        color: clr,
+        emissive: 0xffffff, shininess: 180
+      })
+    );
+    particle.position.copy(pos);
+    const theta = Math.random()*2*Math.PI;
+    const phi = Math.acos(2*Math.random()-1);
+    const speed = 9 + Math.random()*16;
+    const vel = new THREE.Vector3(
+      Math.sin(phi)*Math.cos(theta),
+      Math.cos(phi),
+      Math.sin(phi)*Math.sin(theta)
+    ).multiplyScalar(speed);
+    scene.add(particle);
+    bullets.push({ mesh: particle, body: fakeBodyFromVel(pos, vel), ttl: 0.9 + Math.random()*0.6 });
+  }
+  for(let i=0; i<18; i++){
+    const scale = 2.9 + Math.random()*0.6;
+    const smoke = new THREE.Mesh(
+      new THREE.SphereGeometry(scale, 12, 12),
+      new THREE.MeshPhongMaterial({
+        color: 0x8d9296,
+        transparent: true,
+        opacity: 0.38 + Math.random()*0.19
+      })
+    );
+    smoke.position.copy(pos);
+    const angle = Math.random()*2*Math.PI;
+    const vel = new THREE.Vector3(
+      Math.cos(angle)*0.45,
+      1.6+Math.random()*1.6,
+      Math.sin(angle)*0.45
+    );
+    scene.add(smoke);
+    bullets.push({ mesh: smoke, body: fakeBodyFromVel(pos, vel), ttl: 2.2 + Math.random()*0.7, isSmoke:true });
+  }
+}
+
+function fakeBodyFromVel(startPos, vel){
+  const b = new CANNON.Body({mass:0});
+  b.position.set(startPos.x, startPos.y, startPos.z);
+  b.velocity.set(vel.x, vel.y, vel.z);
+  return b;
+}
+
+function rand(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
+function randRange(a,b){ return a + Math.random()*(b-a); }
+
+function findShipByObject(obj) {
+  for (const ship of ships) {
+    let m = obj;
+    while (m) {
+      if (m === ship.mesh) return ship;
+      m = m.parent;
+    }
+  }
+  return null;
+}
+
+
+// ================== KUŞ (GLTF) ==================
+let bird = null;
+new GLTFLoader().load('bird.glb', (gltf) => {
+  bird = gltf.scene;
+  bird.traverse(o => { if (o.isMesh) { o.castShadow = true; /* suya gölge düşer */ } });
+  bird.scale.set(0.05, 0.05, 0.05);
+  bird.position.set(-10, 15, 0);
+  scene.add(bird);
+});
+
+// Kuşun yörüngesel uçuşu (deniz ve gemilerin üstünden geçer)
+// kuş update fonksiyonunda, ara ara ötüş:
+let seagullTimer = 0;
+function updateBird(t){
+  if (!bird) return;
+  const R = 85, ang = t * 0.22, y  = 16 + Math.sin(t*1.7) * 2.6;
+  bird.position.set(Math.cos(ang)*R, y, Math.sin(ang)*R);
+  const ahead = new THREE.Vector3(Math.cos(ang+0.01)*R, y, Math.sin(ang+0.01)*R);
+  bird.lookAt(ahead);
+
+  // ses tetikleme
+  seagullTimer -= (1/60); // kabaca
+  if (seagullTimer <= 0){
+    // oyuncuya yakınsa çal (örnek basit mesafe kontrolü)
+    if (bird.position.distanceTo(camera.position) < 300){
+      // playSfx('seagull');
+    }
+    seagullTimer = 6 + Math.random()*8; // 6-14 sn arası
+  }
+}
+// ================== KUŞ (GLTF) ==================
+
+
+// === GÜNDÜZ/GECE MODU (yalnızca ilgili kod) ===
+// Güneşi mevcut dirLight olarak kullanıyoruz; Ay için yeni bir ışık ekliyoruz.
+const DAY_LEN = 120; // saniye: tam gün-döngü süresi
+const SKY_DAY = new THREE.Color(0x87ceeb);
+const SKY_NIGHT = new THREE.Color(0x020411);
+
+const ambientDayNight = new THREE.AmbientLight(0xffffff, 0.4);
+scene.add(ambientDayNight);
+
+const moonLight = new THREE.DirectionalLight(0xbfd1ff, 0);
+moonLight.position.set(0, 5, 10);
+scene.add(moonLight);
+scene.add(moonLight.target);
+
+// Görsel güneş/ay için basit mesh'ler
+const sunMesh  = new THREE.Mesh(new THREE.SphereGeometry(1.2,16,16), new THREE.MeshBasicMaterial({ color:0xffe066 }));
+const moonMesh = new THREE.Mesh(new THREE.SphereGeometry(0.9,16,16),  new THREE.MeshBasicMaterial({ color:0xbfd1ff }));
+sunMesh.matrixAutoUpdate = moonMesh.matrixAutoUpdate = true;
+scene.add(sunMesh, moonMesh);
+
+// // // Gölge (zaten açıksa gerekmez)
+// dirLight.castShadow = true;
+// moonLight.castShadow = true; // İstersen true yap
+
+function updateDayNight(t){
+  // 0..1 faz
+  const phase = ((t % DAY_LEN) / DAY_LEN + 0.50) % 1;       // 0: şafak, .25: öğle, .5: günbatımı, .75: gece yarısı
+  const ang = phase * Math.PI * 2 - Math.PI/2;   // -90°'den başlat (öğle tepeye yakın)
+  const R = 180;
+
+  // Güneş ışığı konumu ve hedefi
+  const sunDir = new THREE.Vector3(Math.cos(ang), Math.sin(ang), 0); // dikey düzlemde dönüş
+  const sunPos = sunDir.clone().multiplyScalar(R);
+  dirLight.position.copy(sunPos);
+  dirLight.target.position.set(0,0,0);
+  dirLight.target.updateMatrixWorld();
+
+  // Ay ışığı: güneşin karşı tarafı
+  const moonDir = sunDir.clone().multiplyScalar(-1);
+  const moonPos = moonDir.clone().multiplyScalar(R);
+  moonLight.position.copy(moonPos);
+  moonLight.target.position.set(0,0,0);
+  moonLight.target.updateMatrixWorld();
+
+  // Yoğunluk geçişleri (gün ve gece)
+  const sunInt  = Math.max(0, 1.2 * sunDir.y);   // ufkun altına inince 0
+  const moonInt = Math.max(0, 0.6 * -sunDir.y);  // güneş batınca artar
+  dirLight.intensity  = sunInt;
+  moonLight.intensity = moonInt;
+
+  // // Ortam ışığı ve gökyüzü rengi
+  // const k = THREE.MathUtils.clamp((sunDir.y + 0.1) / 0.9, 0, 1); // 0 gece, 1 gündüz arası karışım
+  // ambientDayNight.intensity = 0.15 + 0.45 * k;
+  // scene.background = SKY_NIGHT.clone().lerp(SKY_DAY, k);
+
+  // // === YUMUŞAK ORTAM IŞIĞI: gece kontrastını kurtarır
+  // // Gündüz/Gece setup'ında bir kere ekle:
+  // const hemi = new THREE.HemisphereLight(0x223355, 0x0a1a22, 0.2); // sky, ground, intensity
+  // scene.add(hemi);
+
+  // // updateDayNight içinde karışıma sok:
+  // hemi.intensity = 0.15 + 0.35 * (k);  // k=1 gündüz, k=0 gece → gece biraz artsın
+
+  // Görsel güneş/ay konumu
+  sunMesh.position.copy(sunPos.clone().setLength(90));
+  moonMesh.position.copy(moonPos.clone().setLength(90));
+
+  // // Gece tamamen kararmasın:
+  // ambientDayNight.intensity = 0.25 + 0.45 * 0.25; // seninkinde 0.15'ti → 0.25 yap
+  // moonLight.intensity = Math.max(0, 0.8 * -sunDir.y); // 0.6 yerine 0.8
+}
+// === GÜNDÜZ/GECE MODU (yalnızca ilgili kod) ===
+
+
+// === Kelime Sözlüğü (kısa anlam + mini örnek) ===
+const WORD_DICT = {
+  "def": { m:"Fonksiyon tanımlar.", e:"def greet(name):\n    return f\"Hello {name}\"" },
+  "lambda": { m:"İsimsiz küçük fonksiyon.", e:"double = lambda x: x*2\nprint(double(4))  # 8" },
+  "list": { m:"Sıralı, değiştirilebilir koleksiyon.", e:"nums=[1,2,3]\nnums.append(4)" },
+  "dict": { m:"Anahtar->değer eşlemeleri.", e:"user={'name':'Ada','age':30}\nprint(user['name'])" },
+  "tuple": { m:"Değiştirilemez dizi.", e:"t=(1,2,3)" },
+  "set": { m:"Eşsiz eleman kümesi.", e:"s={1,2,2,3}\n# {1,2,3}" },
+  "range": { m:"Aralık üretir.", e:"for i in range(3):\n    print(i)" },
+  "len": { m:"Uzunluk/hacim verir.", e:"len('python')  # 6" },
+  "append": { m:"Liste sonuna ekler.", e:"items=[]\nitems.append('x')" },
+  "pop": { m:"Son elemanı (veya index) çıkarır.", e:"items.pop()" },
+  "slice": { m:"Dilimleme işlemi.", e:"s='python'\nprint(s[1:4]) # yth" },
+  "yield": { m:"Generator döndürür.", e:"def gen():\n    yield 1\n    yield 2" },
+  "async": { m:"Eşzamansız tanımlama.", e:"async def f():\n    pass" },
+  "await": { m:"Async bekleme.", e:"await task" },
+  "with": { m:"Context manager kullanır.", e:"with open('a.txt') as f:\n    data=f.read()" },
+  "try": { m:"Hata yakalama bloğu.", e:"try:\n    x=1/0\nexcept ZeroDivisionError:\n    pass" },
+  "except": { m:"Hataları yakalar.", e:"except ValueError: ..." },
+  "import": { m:"Modül dahil etme.", e:"import math\nprint(math.sqrt(9))" },
+  "from": { m:"Modülden seçmeli import.", e:"from math import pi" },
+  "as": { m:"Takma ad.", e:"import numpy as np" },
+  "class": { m:"Sınıf tanımlama.", e:"class A:\n    def __init__(self):\n        self.x=1" },
+  "self": { m:"Sınıf içi örnek referansı.", e:"class A:\n    def __init__(self):\n        self.x=1" },
+  "__init__": { m:"Yapıcı (constructor).", e:"class A:\n    def __init__(self,v):\n        self.v=v" },
+  "venv": { m:"Sanal ortam.", e:"python -m venv .venv" },
+  "pip": { m:"Paket yöneticisi.", e:"pip install requests" }
+};
+
+// === Yanlış Kelime Tekrar Kuyruğu ve Ustalık Takibi ===
+const wrongRepeatQueue = [];      // tekrar çıkması için öncelikli sıra
+const mastery = {};               // {word: doğru_sayısı}
+const MASTERY_TARGET = 3;         // 3 kez doğru -> setten düşür (opsiyon)
+
+function markCorrect(word){
+  mastery[word] = (mastery[word]||0) + 1;
+}
+function isMastered(word){
+  return (mastery[word]||0) >= MASTERY_TARGET;
+}
+
+// === Kelime Popup ===
+const wp = {
+  root: document.getElementById('wordPopup'),
+  badge: document.getElementById('wp-badge'),
+  title: document.getElementById('wp-title'),
+  meaning: document.getElementById('wp-meaning'),
+  example: document.getElementById('wp-example'),
+  close: document.getElementById('wp-close')
+};
+wp.close.onclick = ()=> wp.root.style.display='none';
+
+function showWordPopup(word, isPython){
+  const info = WORD_DICT[word];
+  wp.title.textContent = word;
+  if(isPython && info){
+    wp.badge.textContent='PY';
+    wp.badge.style.background='#16a34a';
+    wp.meaning.textContent = info.m;
+    wp.example.textContent = info.e;
+  } else if (isPython && !info){
+    wp.badge.textContent='PY';
+    wp.badge.style.background='#16a34a';
+    wp.meaning.textContent = 'Python kavramı. (Kısa açıklama eklenebilir)';
+    wp.example.textContent = '';
+  } else {
+    wp.badge.textContent='N/PY';
+    wp.badge.style.background='#ef4444';
+    wp.meaning.textContent = 'Python dışı/yanlış kavram – tekrar karşılaşacaksın!';
+    wp.example.textContent = '';
+  }
+  wp.root.style.display='block';
+  // 4sn sonra otomatik kapanma (isteğe bağlı)
+  setTimeout(()=>{ wp.root.style.display='none'; }, 4000);
+}
+
+// === Görevler ===
+const quests = [
+  { id:'q1', title:'5 Python kelimesini doğru vur', goal:5, progress:0 },
+  { id:'q2', title:'Yanlış vurmadan 8 gemi batır', goal:8, progress:0, streak:true, streakCur:0 },
+  { id:'q3', title:'3 farklı konu kelimesi topla (def/class/lambda)', goal:3, progress:0, set:new Set() },
+  { id:'q4', title:'Arka arkaya 3 Python gemisi', goal:3, progress:0, combo:true, comboCur:0, reward:'joker' },
+  { id:'q5', title:'Toplam 50 puana ulaş', goal:50, progress:0, type:'score', reward:null },
+  { id:'q6', title:'1 dakika içinde 10 doğru', goal:10, progress:0, type:'timed', time:60, left:60, reward:'joker' },
+  { id:'q7', title:'Liste işlemleri: list/append/pop', goal:3, progress:0, set:new Set(), pool:new Set(['list','append','pop']), reward:null },
+  { id:'q8', title:'Sadece bir yanlışla 12 gemi', goal:12, progress:0, mistakes:0, reward:'joker' }
+];
+
+function renderQuests(){
+  const host = document.getElementById('qp-list');
+  host.innerHTML = '';
+  quests.forEach(q=>{
+    const done = (q.type==='score') ? (score >= q.goal) : (q.progress >= q.goal);
+    const pct = (q.type==='score') ? Math.min(100, (score/q.goal)*100) : Math.min(100, (q.progress/q.goal)*100);
+    const em = done ? '✅' : (q.reward==='joker' ? '🃏' : '🎯');
+    const timeStr = (q.type==='timed') ? ` <span style="opacity:.8;font-size:12px;">(${Math.ceil(q.left)}s)</span>` : '';
+    const wrap = document.createElement('div'); wrap.className='qp-item';
+    wrap.innerHTML = `
+      <div class="qp-title">${em} ${q.title}${timeStr}</div>
+      <div class="qp-bar"><div class="qp-fill" style="width:${pct}%"></div></div>
+    `;
+    host.appendChild(wrap);
+  });
+}
+renderQuests();
+
+function updateQuestsOnHit(word, isPython, wasWrong){
+  // q1: 5 Python kelimesi
+  const q1 = quests.find(q=>q.id==='q1');
+  if (isPython && q1.progress < q1.goal){ q1.progress++; if(q1.progress===q1.goal && q1.reward==='joker') grantJoker(1); }
+
+  // q2: yanlış vurmadan 8 gemi
+  const q2 = quests.find(q=>q.id==='q2');
+  if (wasWrong){ q2.streakCur = 0; }
+  else { q2.streakCur++; q2.progress = Math.max(q2.progress, Math.min(q2.goal, q2.streakCur)); if(q2.progress===q2.goal && q2.reward==='joker') grantJoker(1); }
+
+  // q3: def/class/lambda setinden 3 farklı
+  const q3 = quests.find(q=>q.id==='q3');
+  if (isPython && ['def','class','lambda'].includes(word)){
+    q3.set.add(word); q3.progress = Math.min(q3.goal, q3.set.size);
+  }
+
+  // q4: arka arkaya 3 Python
+  const q4 = quests.find(q=>q.id==='q4');
+  if (isPython){ q4.comboCur++; q4.progress = Math.max(q4.progress, Math.min(q4.goal, q4.comboCur)); }
+  else { q4.comboCur = 0; }
+  if (q4.progress===q4.goal && q4.reward==='joker') grantJoker(1);
+
+  // q5: skor tabanlı (renderQuests zaten skora bakıyor)
+
+  // q6: 1 dk içinde 10 doğru
+  const q6 = quests.find(q=>q.id==='q6');
+  if (q6.left > 0 && isPython && q6.progress < q6.goal){
+    q6.progress++;
+    if (q6.progress === q6.goal && q6.reward==='joker') grantJoker(1);
+  }
+
+  // q7: konu seti (list/append/pop)
+  const q7 = quests.find(q=>q.id==='q7');
+  if (isPython && q7.pool.has(word)){
+    q7.set.add(word); q7.progress = Math.min(q7.goal, q7.set.size);
+  }
+
+  // q8: sadece bir yanlışla 12 gemi
+  const q8 = quests.find(q=>q.id==='q8');
+  if (wasWrong){ q8.mistakes++; }
+  if (!wasWrong && q8.progress < q8.goal && q8.mistakes <= 1){
+    q8.progress++;
+    if (q8.progress===q8.goal && q8.reward==='joker') grantJoker(1);
+  }
+
+  renderQuests();
+}
+
+// spawnShip içinde, word seçimini şu mantıkla yap:
+function nextWord(){
+  // %50 öncelikle yanlış kuyruğu
+  if (wrongRepeatQueue.length && Math.random()<0.5) {
+    return { word: wrongRepeatQueue.shift(), isPython:false, forced:true };
+  }
+  // normal seçim
+  const usePython = Math.random() < 0.6;
+  const word = usePython ? rand(PY_WORDS) : rand(OTHER_WORDS);
+  return { word, isPython: usePython, forced:false };
+}
+// === Kelime Sözlüğü (kısa anlam + mini örnek) sonu === 
+
+// === Joker state ===
+const player = { jokers: 0, shield: false };
+let scoreMultiplier = 1;
+let multiplierT = 0;
+
+function grantJoker(n=1){
+  player.jokers += n;
+  document.getElementById('jokerCount').textContent = player.jokers;
+  playSfx('joker');
+}
+
+// x2 etkisini başlat
+function startX2(duration=10){
+  scoreMultiplier = 2;
+  multiplierT = duration;
+  document.getElementById('multTimer').style.display = '';
+  document.getElementById('multLeft').textContent = multiplierT.toFixed(1);
+}
+
+// Joker UI butonları
+document.getElementById('useShield').addEventListener('click', ()=>{
+  if(player.jokers <= 0) return;
+  player.jokers--; player.shield = true;
+  document.getElementById('jokerCount').textContent = player.jokers;
+  playSfx('joker');
+});
+document.getElementById('useX2').addEventListener('click', ()=>{
+  if(player.jokers <= 0) return;
+  player.jokers--;
+  document.getElementById('jokerCount').textContent = player.jokers;
+  startX2(10);
+  playSfx('joker');
+});
+// === Joker sonu ===
+ 
+const clock = new THREE.Clock();
+function animate(){
+
+   updateBird(performance.now() * 0.001);
+
+   updateDayNight(performance.now() * 0.001);
+  
+   requestAnimationFrame(animate);
+   
+  const dt = Math.min(0.033, clock.getDelta());
+
+  //Joker hesaplama
+  if (multiplierT > 0) {
+  multiplierT = Math.max(0, multiplierT - dt);
+  document.getElementById('multLeft').textContent = multiplierT.toFixed(1);
+  if (multiplierT === 0) {
+    scoreMultiplier = 1;                         // <<< geri al
+    document.getElementById('multTimer').style.display = 'none';
+  }
+}
+  //Joker hesaplama sonu 
+
+  //zamanlayıcı görev ticki
+  const q6 = quests.find(q=>q.id==='q6');
+  if (q6.left > 0 && q6.progress < q6.goal){
+    q6.left = Math.max(0, q6.left - dt);
+    renderQuests();
+  }//zamanlayıcı görev ticki sonu
+
+  animate_shield(dt);
+
+
+  //su dalgası
+  const t = performance.now()*0.001;
+  for(let i=0; i<seaGeo.attributes.position.count; i++){
+    const x = seaGeo.attributes.position.getX(i);
+    const y = seaGeo.attributes.position.getY(i);
+    let wave = (
+      Math.sin(0.13*x + t*1.3) * 0.62 +
+      Math.cos(0.12*y + t*0.95) * 0.53 +
+      Math.sin(0.11*(x+y) + t*1.7) * 0.33
+    );
+    seaGeo.attributes.position.setZ(i, wave);
+  }
+  seaGeo.computeVertexNormals();
+  seaGeo.attributes.position.needsUpdate = true;
+  //su dalgası sonu
+
+  world.step(1/60, dt);
+  baseMesh.rotation.y = yaw;
+  barrelPivot.rotation.z = pitch;
+
+  for(let i=bullets.length-1;i>=0;i--){
+    const b = bullets[i];
+    b.ttl -= dt;
+
+    if (b.v) {
+        // Yerçekimi + sürükleme
+        b.v.y += -9.82 * 0.6 * dt;         // stilize yerçekimi (0.6x)
+        b.v.multiplyScalar(1 - 0.85*dt);   // hava direnci
+        b.mesh.position.addScaledVector(b.v, dt);
+
+        // Açısal hız
+        if (b.av) {
+            b.mesh.rotation.x += b.av.x * dt;
+            b.mesh.rotation.y += b.av.y * dt;
+            b.mesh.rotation.z += b.av.z * dt;
+        }
+        }
+
+
+    // if(b.isSmoke && b.mesh.material.opacity !== undefined){
+    //   b.mesh.material.opacity = Math.max(0, b.mesh.material.opacity - dt*0.29);
+    //   b.mesh.scale.multiplyScalar(1 + dt*0.18);
+    // }
+    if(b.body){
+      b.mesh.position.set(b.body.position.x, b.body.position.y, b.body.position.z);
+      b.mesh.quaternion.set(b.body.quaternion.x, b.body.quaternion.y, b.body.quaternion.z, b.body.quaternion.w);
+    }
+    if(b.ttl <= 0){
+      if(b.body) world.removeBody(b.body);
+      scene.remove(b.mesh);
+        bullets.splice(i,1);
+         
+
+    }
+    
+      
+  }
+
+  for(let i=ships.length-1;i>=0;i--){
+    const s = ships[i];
+    const m = s.mesh;
+    m.position.y = 1.2 + Math.sin(t + s.phase)*0.4;
+    m.position.x += s.drift.x * dt;
+    m.position.z += s.drift.z * dt;
+    m.rotation.y = Math.atan2(s.drift.x, s.drift.z);
+    if (m.position.x > SEA_SIZE*0.5) m.position.x = -SEA_SIZE*0.5;
+    if (m.position.x < -SEA_SIZE*0.5) m.position.x = SEA_SIZE*0.5;
+    if (m.position.z > SEA_SIZE*0.5) m.position.z = -SEA_SIZE*0.5;
+    if (m.position.z < -SEA_SIZE*0.5) m.position.z = SEA_SIZE*0.5;
+
+    prevent_from_cannon(m,s);//sahilden uzak tut
+
+    for(let j=bullets.length-1;j>=0;j--){
+      const b = bullets[j];
+      const d2 = m.position.distanceToSquared(b.mesh.position);
+      if(d2 < 10){
+
+         // --- GEMİ VURULDUĞUNDA:
+        const wasWrong = !s.isPython;
+
+        // --- JOKER kalkan: yanlışsa bir kez affet ---
+        if (wasWrong && player.shield) {
+          // affedildi → yanlış sayma, ceza yok
+          player.shield = false;
+          // İstersen skor cezası vermeden uyarı popup gösterebilirsin
+          playSfx('joker');
+        } else {
+          // normal puan/ceza
+          addScore(s.isPython ? +10 : -5);
+          playSfx(s.isPython ? 'hit_py' : 'hit_wrong');
+        }
+
+        shatterBurstImpact(m.position);
+        // boom(m.position, s.isPython?0x33ff77:0xff3355);
+        addScore(s.isPython? +10 : -5);
+
+        // ustalık
+        showWordPopup(s.word, s.isPython);
+        updateQuestsOnHit(s.word, s.isPython, !player.shield);
+        if (s.isPython) markCorrect(s.word); else wrongRepeatQueue.push(s.word);
+
+        scene.remove(m); ships.splice(i,1);
+        setTimeout(() => {
+            if (s.label && s.label.parent) {
+                s.label.parent.remove(s.label);
+            }
+            }, 3000);
+
+       
+
+        // Popup göster
+        showWordPopup(s.word, s.isPython);
+
+        // Görev ilerlet
+        updateQuestsOnHit(s.word, s.isPython, wasWrong && !player.shield);
+
+        // Ustalık takibi
+        if (s.isPython) {
+          markCorrect(s.word);
+        } else {
+          // Yanlış kavram tekrar kuyruğuna ekle (tekrar karşına çıksın)
+          wrongRepeatQueue.push(s.word);
+        }
+
+        // İstersen ustalaşılan kelimeyi (3 kez doğru) daha az getir:
+        if (isMastered(s.word)) {
+          // küçük bir olasılıkla getir, yoksa es geç (opsiyonel)
+          // burada spawn’da kontrol edebilirsin, basit tutuyoruz
+        }   
+        //döngü sonu 
+        break;
+      }
+    }
+  }
+
+  renderer.render(scene, camera);
+  labelRenderer.render(scene, camera);
+}
+animate();
+
+addEventListener('resize', ()=>{
+  camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  labelRenderer.setSize(innerWidth, innerHeight);
+});
+
+let autoAiming = false;
+let lastTarget = null;
+let lastPitchAdjust = 0;
+
+let aimTries = 0, aimMaxTries = 20;
+
+// slider kodları
+const bulletSlider = document.getElementById('bulletSlider');
+const bulletCountSpan = document.getElementById('bulletCount');
+bulletSlider.addEventListener('input', ()=> bulletCountSpan.textContent = bulletSlider.value);
+
+function getBallisticPitch(distance, heightDiff, speed, gravity=9.82) {
+  const v2 = speed*speed;
+  const root = v2*v2 - gravity*(gravity*distance*distance + 2*heightDiff*v2);
+  if(root < 0) return null; // Ulaşamaz
+  return Math.atan((v2 - Math.sqrt(root)) / (gravity*distance));
+}
+
+function autoAimTo(ship) {
+  if (autoAiming || !ship) return;
+  autoAiming = true;
+  aimTries = 0;
+
+  const v0 = 30; // fire fonks ile aynı hız!
+  const fireAndCheck = () => {
+    // 1. Gemi ve barrelPivot'un konumlarını al
+    const targetWorldPos = new THREE.Vector3();
+    ship.mesh.getWorldPosition(targetWorldPos);
+    const pivotWorld = barrelPivot.getWorldPosition(new THREE.Vector3());
+
+    // 2. Yaw ve pitch için farkları bul
+    const dz  = targetWorldPos.x - pivotWorld.x;
+    const dx = targetWorldPos.z - pivotWorld.z;
+    const dy = targetWorldPos.y - pivotWorld.y;
+
+    const targetYaw = -Math.atan2(dx, dz);
+    const dist = Math.sqrt(dx*dx + dz*dz);
+
+    // 3. Pitch için fiziksel açı hesapla (balistik)
+    let targetPitch = getBallisticPitch(dist, dy, v0);
+    // Eğer menzile erişilemiyorsa varsayılan hafif yukarı at
+    if(targetPitch == null) targetPitch = 0.3;
+
+    // Vuramadıkça açıyı biraz daha artır!
+    targetPitch *= (0.7 + aimTries*0.09);
+
+    // 4. Smooth dönüş
+    const startYaw = yaw, startPitch = pitch;
+    const duration = 0.001;
+    let elapsed = 0;
+    function animateAim() {
+      elapsed += clock.getDelta();
+      let t = Math.min(1, elapsed/duration);
+      yaw = startYaw + (targetYaw - startYaw)*t;
+      pitch = startPitch + (targetPitch - startPitch)*t;
+      if(t < 1){
+        requestAnimationFrame(animateAim);
+      } else {
+        yaw = targetYaw; pitch = targetPitch;
+        setTimeout(()=>{
+          fire();
+          // 5. Sonuç kontrolü (gemi hâlâ varsa tekrar dene)
+          setTimeout(()=>{
+            const stillThere = ships.includes(ship);
+            aimMaxTries = bulletSlider.value-1;
+            if(stillThere && aimTries < aimMaxTries){
+              aimTries++;
+              fireAndCheck(); // recursive: tekrar dene!
+            } else {
+              autoAiming = false; // ya vurdu, ya da max deneme
+            }
+          }, 55 ); // merminin gemiye ulaşma süresi
+        }, 10);
+      }
+    }
+    animateAim();
+  };
+  fireAndCheck();
+}
+// 3D mesh veya child tıklama:
+renderer.domElement.addEventListener('click', (event) => {
+  if (autoAiming) return;
+  const mouse = new THREE.Vector2(
+    (event.clientX / innerWidth) * 2 - 1,
+    -(event.clientY / innerHeight) * 2 + 1
+  );
+  const raycaster = new THREE.Raycaster();
+  raycaster.setFromCamera(mouse, camera);
+  const intersects = raycaster.intersectObjects(ships.map(s=>s.mesh), true);
+  if(intersects.length>0){
+    const ship = findShipByObject(intersects[0].object);
+    autoAimTo(ship);
+  }
+});
+// Label tıklama:
+labelRenderer.domElement.addEventListener('click', (event) => {
+  if (autoAiming) return;
+  let clickedDiv = event.target;
+  if (!clickedDiv || clickedDiv.tagName !== "DIV") return;
+  const ship = ships.find(ship => ship.div === clickedDiv);
+  autoAimTo(ship);
+});
+
+function aimAtClientXY(){}
+aimAtClientXY(innerWidth/2, innerHeight/2);
+
+// --- Kuş ekleme ---
+// Gölge ayarları (ışık zaten var ama gölgeyi açıyoruz)
+// === GÖLGE AÇ / IŞIK GÖLGE AYARLA (bir kez) ===
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;   // gece için 1.1–1.2 deneyebilirsin
+
+dirLight.castShadow = true;
+dirLight.shadow.mapSize.set(2048, 2048);
+dirLight.shadow.camera.near = 1;
+dirLight.shadow.camera.far  = 220;
+dirLight.shadow.camera.left = -140;
+dirLight.shadow.camera.right = 140;
+dirLight.shadow.camera.top = 140;
+dirLight.shadow.camera.bottom = -140;
+
+// === IŞIK: ay/güneş gölge kalitesi ve bias
+
+dirLight.shadow.bias = -0.0002;
+dirLight.shadow.normalBias = 0.02;
+
+moonLight.castShadow = true;
+// moonLight.shadow.mapSize.set(2048, 2048);
+// moonLight.shadow.bias = -0.0002;
+// moonLight.shadow.normalBias = 0.02;
+
+ 
+
+// === MALZEME: PBR'a geçmek istersen (daha doğal gece/gündüz)
+// Baz ve namlu:
+baseMesh.material = new THREE.MeshStandardMaterial({ color:0x555555, roughness:0.85, metalness:0.05 });
+barrelMesh.material = new THREE.MeshStandardMaterial({ color:0x333333, roughness:0.2, metalness:0.5 });
+
+
+// === GÖLGELER SAHNEDE GERÇEKÇİ DÜŞSÜN
+sea.receiveShadow = true;
+beach.receiveShadow = true;
+baseMesh.castShadow =  true;
+baseMesh.receiveShadow = true;
+barrelMesh.castShadow = true;
+
+// Deniz ve sahil gölge alsın
+sea.receiveShadow = true;
+beach.receiveShadow = true;
+
+// Baz ve namlu gölge alsın
+baseMesh.castShadow = true; baseMesh.receiveShadow = true;
+barrelMesh.castShadow = true;
+
+
+function startShield(duration=10){
+  player.shield = true;
+  shieldT = duration;
+  const el = document.getElementById('shieldTimer');
+  el.style.display = '';
+  document.getElementById('shieldLeft').textContent = shieldT.toFixed(1);
+}
+
+document.getElementById('useShield').addEventListener('click', ()=>{
+  if(player.jokers <= 0) return;
+  player.jokers--; player.shield = true;
+  document.getElementById('jokerCount').textContent = player.jokers;
+  startShield(10);              // <<< EKLENDİ
+  playSfx('joker');
+});
+
+function animate_shield(dt){
+    if (shieldT > 0){
+    shieldT = Math.max(0, shieldT - dt);
+    document.getElementById('shieldLeft').textContent = shieldT.toFixed(1);
+    if (shieldT === 0){
+      player.shield = false;
+      document.getElementById('shieldTimer').style.display = 'none';
+    }
+  }
+}
+
+
+
+// https://freesound.org/people/norwayjohn/sounds/404686/ ocean sound
+// Ocean sesi: düşük volümde sürekli çal
+const ocean = document.getElementById('sfx_bg');
+ocean.loop = true;
+ocean.volume = 0.5; // düşük ses
+ocean.muted = false;
+ocean.play().catch(()=>{}); // tarayıcı kısıtı olursa tıklama sonrası çalar
+
+// Sağ üstteki emoji butonuyla aç/kapat
+const soundBtn = document.getElementById('soundToggle');
+function refreshIcon(){
+  soundBtn.textContent = (ocean.muted || ocean.paused) ? '🔇' : '🔊';
+}
+soundBtn.addEventListener('click', () => {
+  if (ocean.paused) {
+    ocean.muted = false;
+    ocean.play().catch(()=>{ /* kullanıcı etkileşimi yoksa sessiz kalır */ });
+  } else {
+    ocean.muted = !ocean.muted;
+  }
+  refreshIcon();
+});
+refreshIcon();
+
+</script>
+</body>
+</html>
+
+
